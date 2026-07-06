@@ -1,0 +1,15 @@
+*.iml
+.gradle/
+.kotlin/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild
+.cxx
+
+# API keys stay out of version control
+airnow_dot_gov_api_key.txt
+pirate_weather_api_key.txt
+*api_key*.txt
