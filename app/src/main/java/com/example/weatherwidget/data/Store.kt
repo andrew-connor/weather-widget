@@ -33,6 +33,22 @@ object Store {
         prefs(ctx).edit().putString("locations", arr.toString()).apply()
     }
 
+    fun getHistoryLocations(ctx: Context): List<SavedLocation> {
+        val arr = JSONArray(prefs(ctx).getString("history_locations", "[]") ?: "[]")
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            SavedLocation(o.getString("name"), o.getDouble("lat"), o.getDouble("lon"))
+        }
+    }
+
+    fun setHistoryLocations(ctx: Context, locations: List<SavedLocation>) {
+        val arr = JSONArray()
+        locations.forEach {
+            arr.put(JSONObject().put("name", it.name).put("lat", it.lat).put("lon", it.lon))
+        }
+        prefs(ctx).edit().putString("history_locations", arr.toString()).apply()
+    }
+
     fun getLastUpdated(ctx: Context): Long = prefs(ctx).getLong("last_updated", 0L)
 
     fun setCachedWeather(ctx: Context, list: List<LocationWeather>) {

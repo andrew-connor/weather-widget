@@ -27,3 +27,15 @@ data class GeoResult(
     val lat: Double,
     val lon: Double,
 )
+
+data class HourHistory(
+    val timeEpoch: Long,
+    val tempF: Int?,
+    val rainInches: Double,
+)
+
+data class DayHistory(
+    val hours: List<HourHistory>,
+    val totalInches: Double,
+    val timeZoneId: String?,
+)

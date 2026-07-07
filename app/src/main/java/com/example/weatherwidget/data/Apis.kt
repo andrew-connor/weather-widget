@@ -46,6 +46,41 @@ object PirateWeatherApi {
 }
 
 /**
+ * Pirate Weather Time Machine: observed/modeled conditions for the past 24
+ * hours. A request returns the local calendar day containing the requested
+ * timestamp, so a 24-hour window needs two requests (yesterday + today).
+ */
+object HistoryApi {
+    fun fetchPast24h(apiKey: String, lat: Double, lon: Double): DayHistory {
+        val now = System.currentTimeMillis() / 1000
+        val cutoff = now - 24 * 3600
+        val byTime = sortedMapOf<Long, HourHistory>()
+        var tz: String? = null
+        for (t in listOf(cutoff, now)) {
+            val url = "https://timemachine.pirateweather.net/forecast/$apiKey/$lat,$lon,$t" +
+                "?units=us&exclude=minutely,daily,alerts"
+            val json = JSONObject(Net.getJson(url))
+            if (tz == null) tz = json.optString("timezone").ifEmpty { null }
+            val data = json.optJSONObject("hourly")?.optJSONArray("data") ?: continue
+            for (i in 0 until data.length()) {
+                val h = data.getJSONObject(i)
+                val time = h.optLong("time")
+                if (time < cutoff || time > now) continue
+                val tempF = if (h.has("temperature")) h.getDouble("temperature").roundToInt() else null
+                val rain = when {
+                    h.has("liquidAccumulation") -> h.getDouble("liquidAccumulation")
+                    h.has("precipAccumulation") -> h.getDouble("precipAccumulation")
+                    else -> h.optDouble("precipIntensity", 0.0)
+                }
+                byTime[time] = HourHistory(time, tempF, rain)
+            }
+        }
+        val hours = byTime.values.toList().asReversed() // newest first
+        return DayHistory(hours, hours.sumOf { it.rainInches }, tz)
+    }
+}
+
+/**
  * AirNow current observations API. Returns the worst AQI across the reported
  * pollutants (that is how airnow.gov itself summarizes a location).
  * https://docs.airnowapi.org/
