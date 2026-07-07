@@ -82,13 +82,16 @@ object HistoryApi {
 }
 
 /**
- * Synoptic Data precipitation service: measured rain-gauge totals from
- * stations near a point. https://docs.synopticdata.com/
+ * Synoptic Data: measured rain-gauge readings from stations near a point.
+ * Uses the standard timeseries service with hourly gauge accumulations and
+ * sums them locally — the pre-summed "precip" service needs a paid tier.
+ * https://docs.synopticdata.com/
  */
 object GaugeApi {
     fun fetchPast24h(token: String, lat: Double, lon: Double): List<GaugeReading> {
-        val url = "https://api.synopticdata.com/v2/stations/precip" +
-            "?radius=$lat,$lon,25&limit=8&pmode=totals&recent=1440&units=english&token=$token"
+        val url = "https://api.synopticdata.com/v2/stations/timeseries" +
+            "?radius=$lat,$lon,25&limit=8&recent=1440" +
+            "&vars=precip_accum_one_hour&units=english&token=$token"
         val json = JSONObject(Net.getJson(url))
         val summary = json.optJSONObject("SUMMARY")
         if (summary != null && summary.optInt("RESPONSE_CODE", 1) != 1) {
@@ -98,13 +101,24 @@ object GaugeApi {
         val out = mutableListOf<GaugeReading>()
         for (i in 0 until stations.length()) {
             val s = stations.getJSONObject(i)
-            val precipArr = s.optJSONObject("OBSERVATIONS")?.optJSONArray("precipitation") ?: continue
-            if (precipArr.length() == 0) continue
-            val p = precipArr.getJSONObject(0)
-            if (p.isNull("total")) continue
+            val obs = s.optJSONObject("OBSERVATIONS") ?: continue
+            // Values arrive as e.g. "precip_accum_one_hour_set_1"; a station
+            // with a second sensor gets _set_2, so match by prefix.
+            val key = obs.keys().asSequence()
+                .firstOrNull { it.startsWith("precip_accum_one_hour") } ?: continue
+            val values = obs.optJSONArray(key) ?: continue
+            var total = 0.0
+            var reports = 0
+            for (j in 0 until values.length()) {
+                if (!values.isNull(j)) {
+                    total += values.optDouble(j, 0.0)
+                    reports++
+                }
+            }
+            if (reports == 0) continue
             val name = s.optString("NAME").ifEmpty { s.optString("STID", "Station") }
             val d = s.optDouble("DISTANCE", Double.NaN)
-            out.add(GaugeReading(name, if (d.isNaN()) null else d, p.getDouble("total")))
+            out.add(GaugeReading(name, if (d.isNaN()) null else d, total))
         }
         return out.sortedBy { it.distanceMiles ?: Double.MAX_VALUE }.take(5)
     }
