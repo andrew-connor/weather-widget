@@ -1,9 +1,10 @@
 package com.example.weatherwidget.data
 
-import org.json.JSONArray
-import org.json.JSONObject
+import java.io.IOException
 import java.net.URLEncoder
 import kotlin.math.roundToInt
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Pirate Weather forecast API (Dark Sky compatible).
@@ -77,6 +78,35 @@ object HistoryApi {
         }
         val hours = byTime.values.toList().asReversed() // newest first
         return DayHistory(hours, hours.sumOf { it.rainInches }, tz)
+    }
+}
+
+/**
+ * Synoptic Data precipitation service: measured rain-gauge totals from
+ * stations near a point. https://docs.synopticdata.com/
+ */
+object GaugeApi {
+    fun fetchPast24h(token: String, lat: Double, lon: Double): List<GaugeReading> {
+        val url = "https://api.synopticdata.com/v2/stations/precip" +
+            "?radius=$lat,$lon,25&limit=8&pmode=totals&recent=1440&units=english&token=$token"
+        val json = JSONObject(Net.getJson(url))
+        val summary = json.optJSONObject("SUMMARY")
+        if (summary != null && summary.optInt("RESPONSE_CODE", 1) != 1) {
+            throw IOException(summary.optString("RESPONSE_MESSAGE", "Synoptic error"))
+        }
+        val stations = json.optJSONArray("STATION") ?: return emptyList()
+        val out = mutableListOf<GaugeReading>()
+        for (i in 0 until stations.length()) {
+            val s = stations.getJSONObject(i)
+            val precipArr = s.optJSONObject("OBSERVATIONS")?.optJSONArray("precipitation") ?: continue
+            if (precipArr.length() == 0) continue
+            val p = precipArr.getJSONObject(0)
+            if (p.isNull("total")) continue
+            val name = s.optString("NAME").ifEmpty { s.optString("STID", "Station") }
+            val d = s.optDouble("DISTANCE", Double.NaN)
+            out.add(GaugeReading(name, if (d.isNaN()) null else d, p.getDouble("total")))
+        }
+        return out.sortedBy { it.distanceMiles ?: Double.MAX_VALUE }.take(5)
     }
 }
 

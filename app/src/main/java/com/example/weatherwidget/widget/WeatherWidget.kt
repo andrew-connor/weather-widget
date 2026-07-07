@@ -131,7 +131,7 @@ private fun LocationRow(w: LocationWeather) {
             )
             Spacer(GlanceModifier.defaultWeight())
             Text(
-                w.aqi?.let { "AQI $it" } ?: "AQI --",
+                w.aqi?.let { "AQI $it (${aqiInitials(w.aqiCategory, it)})" } ?: "AQI --",
                 style = TextStyle(
                     color = ColorProvider(aqiColor(w.aqi)),
                     fontSize = 13.sp,
@@ -178,6 +178,19 @@ private fun HourCell(h: HourForecast, modifier: GlanceModifier) {
 
 private fun formatInches(inches: Double): String =
     if (inches < 0.005) "—" else String.format(Locale.US, "%.2f\"", inches).removePrefix("0")
+
+/** "Unhealthy for Sensitive Groups" -> "UFSG"; category from AQI ranges if AirNow omits it. */
+private fun aqiInitials(category: String?, aqi: Int): String {
+    val name = category ?: when {
+        aqi <= 50 -> "Good"
+        aqi <= 100 -> "Moderate"
+        aqi <= 150 -> "Unhealthy for Sensitive Groups"
+        aqi <= 200 -> "Unhealthy"
+        aqi <= 300 -> "Very Unhealthy"
+        else -> "Hazardous"
+    }
+    return name.split(" ").filter { it.isNotEmpty() }.joinToString("") { it.first().uppercase() }
+}
 
 /** Standard EPA AQI category colors. */
 private fun aqiColor(aqi: Int?): Color = when {

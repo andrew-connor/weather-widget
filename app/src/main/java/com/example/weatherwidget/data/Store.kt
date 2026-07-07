@@ -17,6 +17,10 @@ object Store {
     fun setAirNowKey(ctx: Context, v: String) =
         prefs(ctx).edit().putString("airnow_key", v.trim()).apply()
 
+    fun getSynopticToken(ctx: Context): String = prefs(ctx).getString("synoptic_token", "") ?: ""
+    fun setSynopticToken(ctx: Context, v: String) =
+        prefs(ctx).edit().putString("synoptic_token", v.trim()).apply()
+
     fun getLocations(ctx: Context): List<SavedLocation> {
         val arr = JSONArray(prefs(ctx).getString("locations", "[]") ?: "[]")
         return (0 until arr.length()).map { i ->

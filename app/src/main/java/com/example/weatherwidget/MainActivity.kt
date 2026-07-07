@@ -42,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.weatherwidget.data.DayHistory
+import com.example.weatherwidget.data.GaugeApi
+import com.example.weatherwidget.data.GaugeReading
 import com.example.weatherwidget.data.GeoResult
 import com.example.weatherwidget.data.GeocodingApi
 import com.example.weatherwidget.data.HistoryApi
@@ -94,6 +96,7 @@ fun AppScreen() {
 
     var pirateKey by remember { mutableStateOf(Store.getPirateKey(context)) }
     var airNowKey by remember { mutableStateOf(Store.getAirNowKey(context)) }
+    var synopticToken by remember { mutableStateOf(Store.getSynopticToken(context)) }
     var locations by remember { mutableStateOf(Store.getLocations(context)) }
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<GeoResult>>(emptyList()) }
@@ -103,6 +106,7 @@ fun AppScreen() {
     fun saveKeys() {
         Store.setPirateKey(context, pirateKey)
         Store.setAirNowKey(context, airNowKey)
+        Store.setSynopticToken(context, synopticToken)
         status = "API keys saved"
         RefreshWorker.refreshNow(context)
     }
@@ -161,6 +165,13 @@ fun AppScreen() {
                     value = airNowKey,
                     onValueChange = { airNowKey = it },
                     label = { Text("AirNow API key") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = synopticToken,
+                    onValueChange = { synopticToken = it },
+                    label = { Text("Synoptic API token (rain gauges, optional)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -255,6 +266,8 @@ fun HistoryScreen() {
     }
     var selected by remember { mutableStateOf<SavedLocation?>(null) }
     var history by remember { mutableStateOf<DayHistory?>(null) }
+    var gauges by remember { mutableStateOf<List<GaugeReading>>(emptyList()) }
+    var gaugeNote by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
 
@@ -267,6 +280,8 @@ fun HistoryScreen() {
         selected = loc
         loading = true
         history = null
+        gauges = emptyList()
+        gaugeNote = null
         status = null
         results = emptyList()
         query = ""
@@ -282,6 +297,25 @@ fun HistoryScreen() {
                 }
             }
             history = fetched
+            if (fetched != null) {
+                val token = Store.getSynopticToken(context)
+                if (token.isEmpty()) {
+                    gaugeNote = "Add a Synoptic API token on the Widget setup tab to see nearby gauge readings."
+                } else {
+                    val g = withContext(Dispatchers.IO) {
+                        try {
+                            GaugeApi.fetchPast24h(token, loc.lat, loc.lon)
+                        } catch (e: Exception) {
+                            gaugeNote = "Gauge readings unavailable: ${e.message}"
+                            emptyList()
+                        }
+                    }
+                    gauges = g
+                    if (g.isEmpty() && gaugeNote == null) {
+                        gaugeNote = "No reporting gauges found within 25 miles."
+                    }
+                }
+            }
             loading = false
         }
     }
@@ -414,6 +448,38 @@ fun HistoryScreen() {
                                 )
                             }
                         }
+                    }
+                }
+
+                item {
+                    Text(
+                        "Nearby rain gauges — measured 24 h totals",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+                gaugeNote?.let { note ->
+                    item { Text(note, style = MaterialTheme.typography.bodyMedium) }
+                }
+                items(gauges) { g ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                    ) {
+                        Text(
+                            g.name,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            g.distanceMiles?.let { String.format(Locale.US, "%.1f mi", it) } ?: "",
+                            modifier = Modifier.width(64.dp),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            String.format(Locale.US, "%.2f\"", g.inches),
+                            modifier = Modifier.width(52.dp),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
             }
