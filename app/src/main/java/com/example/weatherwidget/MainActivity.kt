@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -76,7 +77,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot() {
     var tab by remember { mutableStateOf(0) }
-    Column(modifier = Modifier.fillMaxSize()) {
+    // Keep content out from under the status bar, gesture bar, and camera
+    // cutout — Android 15+ draws apps edge-to-edge by default.
+    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         TabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Widget setup") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Past 24 hours") })
