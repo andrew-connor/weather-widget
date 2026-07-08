@@ -105,18 +105,32 @@ object GaugeApi {
             val key = obs.keys().asSequence()
                 .firstOrNull { it.startsWith("precip_accum_one_hour") } ?: continue
             val values = obs.optJSONArray(key) ?: continue
-            var total = 0.0
-            var reports = 0
-            for (j in 0 until values.length()) {
-                if (!values.isNull(j)) {
-                    total += values.optDouble(j, 0.0)
-                    reports++
-                }
+            val times = obs.optJSONArray("date_time") ?: continue
+            // Most stations report the one-hour accumulation once per hour,
+            // but some networks report sub-hourly; bucket by hour and keep
+            // each hour's largest reading so nothing is double-counted. The
+            // bucket count doubles as the coverage figure ("22 of 24 hrs").
+            val byHour = HashMap<String, Double>()
+            val n = minOf(values.length(), times.length())
+            for (j in 0 until n) {
+                if (values.isNull(j)) continue
+                val hour = times.optString(j).take(13) // "2026-07-07T14"
+                if (hour.length < 13) continue
+                val v = values.optDouble(j, 0.0)
+                val prev = byHour[hour]
+                if (prev == null || v > prev) byHour[hour] = v
             }
-            if (reports == 0) continue
+            if (byHour.isEmpty()) continue
             val name = s.optString("NAME").ifEmpty { s.optString("STID", "Station") }
             val d = s.optDouble("DISTANCE", Double.NaN)
-            out.add(GaugeReading(name, if (d.isNaN()) null else d, total))
+            out.add(
+                GaugeReading(
+                    name,
+                    if (d.isNaN()) null else d,
+                    byHour.values.sum(),
+                    minOf(byHour.size, 24),
+                )
+            )
         }
         return out.sortedBy { it.distanceMiles ?: Double.MAX_VALUE }.take(5)
     }

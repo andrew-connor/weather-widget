@@ -473,11 +473,17 @@ fun HistoryScreen() {
                             modifier = Modifier.width(64.dp),
                             style = MaterialTheme.typography.bodyMedium
                         )
-                        Text(
-                            String.format(Locale.US, "%.2f\"", g.inches),
-                            modifier = Modifier.width(52.dp),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        Column(modifier = Modifier.width(80.dp)) {
+                            Text(
+                                String.format(Locale.US, "%.2f\"", g.inches),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                "${g.hoursReported} of 24 hrs",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }

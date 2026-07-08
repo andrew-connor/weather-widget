@@ -44,4 +44,5 @@ data class GaugeReading(
     val name: String,
     val distanceMiles: Double?,
     val inches: Double,
+    val hoursReported: Int,
 )
