@@ -275,11 +275,6 @@ fun HistoryScreen() {
     var status by remember { mutableStateOf<String?>(null) }
 
     fun load(loc: SavedLocation) {
-        val key = Store.getPirateKey(context)
-        if (key.isEmpty()) {
-            status = "Save your Pirate Weather API key on the Widget setup tab first."
-            return
-        }
         selected = loc
         loading = true
         history = null
@@ -293,7 +288,7 @@ fun HistoryScreen() {
         scope.launch {
             val fetched = withContext(Dispatchers.IO) {
                 try {
-                    HistoryApi.fetchPast24h(key, loc.lat, loc.lon)
+                    HistoryApi.fetchPast24h(loc.lat, loc.lon)
                 } catch (e: Exception) {
                     status = "Couldn't load history: ${e.message}"
                     null

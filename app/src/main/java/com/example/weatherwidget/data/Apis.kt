@@ -47,37 +47,35 @@ object PirateWeatherApi {
 }
 
 /**
- * Pirate Weather Time Machine: observed/modeled conditions for the past 24
- * hours. A request returns the local calendar day containing the requested
- * timestamp, so a 24-hour window needs two requests (yesterday + today).
+ * Hourly conditions for the past 24 hours, from Open-Meteo (keyless).
+ * Pirate Weather's Time Machine proved unreliable for recent hours: it
+ * returned partial days, then began rejecting requests outright (2026-07).
  */
 object HistoryApi {
-    fun fetchPast24h(apiKey: String, lat: Double, lon: Double): DayHistory {
+    fun fetchPast24h(lat: Double, lon: Double): DayHistory {
+        val url = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
+            "&hourly=temperature_2m,precipitation&past_days=2&forecast_days=1" +
+            "&temperature_unit=fahrenheit&precipitation_unit=inch" +
+            "&timeformat=unixtime&timezone=auto"
+        val json = JSONObject(Net.getJson(url))
+        val tz = json.optString("timezone").ifEmpty { null }
+        val hourly = json.getJSONObject("hourly")
+        val times = hourly.getJSONArray("time")
+        val temps = hourly.optJSONArray("temperature_2m")
+        val precs = hourly.optJSONArray("precipitation")
         val now = System.currentTimeMillis() / 1000
         val cutoff = now - 24 * 3600
-        val byTime = sortedMapOf<Long, HourHistory>()
-        var tz: String? = null
-        for (t in listOf(cutoff, now)) {
-            val url = "https://timemachine.pirateweather.net/forecast/$apiKey/$lat,$lon,$t" +
-                "?units=us&exclude=minutely,daily,alerts"
-            val json = JSONObject(Net.getJson(url))
-            if (tz == null) tz = json.optString("timezone").ifEmpty { null }
-            val data = json.optJSONObject("hourly")?.optJSONArray("data") ?: continue
-            for (i in 0 until data.length()) {
-                val h = data.getJSONObject(i)
-                val time = h.optLong("time")
-                if (time < cutoff || time > now) continue
-                val tempF = if (h.has("temperature")) h.getDouble("temperature").roundToInt() else null
-                val rain = when {
-                    h.has("liquidAccumulation") -> h.getDouble("liquidAccumulation")
-                    h.has("precipAccumulation") -> h.getDouble("precipAccumulation")
-                    else -> h.optDouble("precipIntensity", 0.0)
-                }
-                byTime[time] = HourHistory(time, tempF, rain)
-            }
+        val out = mutableListOf<HourHistory>()
+        for (i in 0 until times.length()) {
+            val t = times.getLong(i)
+            if (t < cutoff || t > now) continue
+            val tempF = if (temps == null || temps.isNull(i)) null
+            else temps.getDouble(i).roundToInt()
+            val rain = if (precs == null || precs.isNull(i)) 0.0 else precs.getDouble(i)
+            out.add(HourHistory(t, tempF, rain))
         }
-        val hours = byTime.values.toList().asReversed() // newest first
-        return DayHistory(hours, hours.sumOf { it.rainInches }, tz)
+        out.sortByDescending { it.timeEpoch } // newest first
+        return DayHistory(out, out.sumOf { it.rainInches }, tz)
     }
 }
 

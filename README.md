@@ -8,7 +8,7 @@ A personal Android home/lock screen widget showing, for any number of saved loca
 
 The app also has a "Past 24 hours" view for any searched location: hourly temperature and rainfall, the 24-hour rainfall total, and measured totals from nearby rain gauges.
 
-Weather data (forecast and past 24 hours) comes from the [Pirate Weather API](https://pirateweather.net); air quality from the [AirNow API](https://docs.airnowapi.org); rain-gauge observations from the [Synoptic Data API](https://synopticdata.com). Location search (street address, ZIP code, or city) uses the US Census geocoder, Open-Meteo geocoder, and Zippopotam — none of which require a key.
+Forecast data comes from the [Pirate Weather API](https://pirateweather.net); the past-24-hours history from the keyless [Open-Meteo API](https://open-meteo.com); air quality from the [AirNow API](https://docs.airnowapi.org); rain-gauge observations from the [Synoptic Data API](https://synopticdata.com). Location search (street address, ZIP code, or city) uses the US Census geocoder, Open-Meteo geocoder, and Zippopotam — none of which require a key.
 
 ## Setup
 
