@@ -39,7 +39,7 @@ object PirateWeatherApi {
                 }
                 val hourTempF = if (h.has("temperature")) h.getDouble("temperature").roundToInt() else null
                 hours.add(HourForecast(time, chancePct, inches, hourTempF))
-                if (hours.size == 6) break
+                if (hours.size == 24) break
             }
         }
         return tempF to hours

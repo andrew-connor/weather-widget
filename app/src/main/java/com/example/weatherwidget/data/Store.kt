@@ -53,6 +53,11 @@ object Store {
         prefs(ctx).edit().putString("history_locations", arr.toString()).apply()
     }
 
+    /** Which six-hour block of the 24-hour forecast the widget shows (0..3). */
+    fun getForecastPage(ctx: Context): Int = prefs(ctx).getInt("forecast_page", 0)
+    fun setForecastPage(ctx: Context, v: Int) =
+        prefs(ctx).edit().putInt("forecast_page", v.coerceIn(0, 3)).apply()
+
     fun getLastUpdated(ctx: Context): Long = prefs(ctx).getLong("last_updated", 0L)
 
     fun setCachedWeather(ctx: Context, list: List<LocationWeather>) {

@@ -59,6 +59,7 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
         }
 
         Store.setCachedWeather(ctx, results)
+        Store.setForecastPage(ctx, 0) // fresh data lands back on the next six hours
         WeatherWidget().updateAll(ctx)
 
         if (results.any { it.error != null } && runAttemptCount < 2) Result.retry()

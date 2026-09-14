@@ -20,6 +20,7 @@ import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
+import androidx.glance.appwidget.updateAll
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
@@ -57,16 +58,17 @@ class WeatherWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val weather = Store.getCachedWeather(context)
         val updatedAt = Store.getLastUpdated(context)
+        val page = Store.getForecastPage(context)
         provideContent {
             GlanceTheme {
-                WidgetContent(weather, updatedAt)
+                WidgetContent(weather, updatedAt, page)
             }
         }
     }
 }
 
 @Composable
-private fun WidgetContent(weather: List<LocationWeather>, updatedAt: Long) {
+private fun WidgetContent(weather: List<LocationWeather>, updatedAt: Long, page: Int) {
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
@@ -83,7 +85,7 @@ private fun WidgetContent(weather: List<LocationWeather>, updatedAt: Long) {
             )
         } else {
             LazyColumn(modifier = GlanceModifier.fillMaxWidth().defaultWeight()) {
-                items(weather) { w -> LocationRow(w) }
+                items(weather) { w -> LocationRow(w, page) }
             }
             Row(
                 modifier = GlanceModifier.fillMaxWidth(),
@@ -97,11 +99,31 @@ private fun WidgetContent(weather: List<LocationWeather>, updatedAt: Long) {
                     style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 10.sp)
                 )
                 Spacer(GlanceModifier.defaultWeight())
+                if (weather.any { it.hours.size > 6 }) {
+                    Text(
+                        "‹",
+                        style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 14.sp),
+                        modifier = GlanceModifier
+                            .padding(horizontal = 6.dp)
+                            .clickable(actionRunCallback<PageBackAction>())
+                    )
+                    Text(
+                        "${page * 6 + 1}–${page * 6 + 6}h",
+                        style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 10.sp)
+                    )
+                    Text(
+                        "›",
+                        style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 14.sp),
+                        modifier = GlanceModifier
+                            .padding(horizontal = 6.dp)
+                            .clickable(actionRunCallback<PageForwardAction>())
+                    )
+                }
                 Text(
                     "↻",
                     style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 14.sp),
                     modifier = GlanceModifier
-                        .padding(horizontal = 8.dp)
+                        .padding(horizontal = 6.dp)
                         .clickable(actionRunCallback<RefreshAction>())
                 )
             }
@@ -110,7 +132,7 @@ private fun WidgetContent(weather: List<LocationWeather>, updatedAt: Long) {
 }
 
 @Composable
-private fun LocationRow(w: LocationWeather) {
+private fun LocationRow(w: LocationWeather, page: Int) {
     Column(modifier = GlanceModifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
@@ -140,7 +162,7 @@ private fun LocationRow(w: LocationWeather) {
             )
         }
         Row(modifier = GlanceModifier.fillMaxWidth()) {
-            w.hours.forEach { h ->
+            w.hours.drop(page * 6).take(6).forEach { h ->
                 HourCell(h, GlanceModifier.defaultWeight())
             }
         }
@@ -206,5 +228,19 @@ private fun aqiColor(aqi: Int?): Color = when {
 class RefreshAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         RefreshWorker.refreshNow(context)
+    }
+}
+
+class PageBackAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        Store.setForecastPage(context, Store.getForecastPage(context) - 1)
+        WeatherWidget().updateAll(context)
+    }
+}
+
+class PageForwardAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        Store.setForecastPage(context, Store.getForecastPage(context) + 1)
+        WeatherWidget().updateAll(context)
     }
 }
