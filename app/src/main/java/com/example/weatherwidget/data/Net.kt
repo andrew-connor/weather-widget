@@ -7,8 +7,8 @@ import java.net.URL
 object Net {
     fun getJson(urlStr: String): String {
         val conn = URL(urlStr).openConnection() as HttpURLConnection
-        conn.connectTimeout = 15000
-        conn.readTimeout = 15000
+        conn.connectTimeout = 6000
+        conn.readTimeout = 8000
         conn.setRequestProperty("User-Agent", "WeatherWidget/1.0 (personal use)")
         conn.setRequestProperty("Accept", "application/json")
         try {

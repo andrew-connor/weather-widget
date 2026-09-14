@@ -5,9 +5,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.LocalContext
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
@@ -20,8 +24,10 @@ import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
+import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.appwidget.updateAll
 import androidx.glance.background
+import androidx.glance.currentState
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
@@ -43,6 +49,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// Per-instance Glance state. Anything the widget renders dynamically must flow
+// through this state rather than values captured in provideGlance: while a
+// widget session is alive (~45s after a tap), update()/updateAll() only reload
+// this state and recompose — provideGlance is NOT re-run, so captured values
+// would freeze and a completion repaint would show stale data.
+internal val FORECAST_PAGE_KEY = intPreferencesKey("forecast_page")
+internal val REFRESHING_KEY = booleanPreferencesKey("refreshing")
+internal val DATA_VERSION_KEY = longPreferencesKey("data_version")
+
 class WeatherWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = WeatherWidget()
 
@@ -56,19 +71,26 @@ class WeatherWidgetReceiver : GlanceAppWidgetReceiver() {
 class WeatherWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val weather = Store.getCachedWeather(context)
-        val updatedAt = Store.getLastUpdated(context)
-        val page = Store.getForecastPage(context)
         provideContent {
             GlanceTheme {
-                WidgetContent(weather, updatedAt, page)
+                WidgetContent()
             }
         }
     }
 }
 
 @Composable
-private fun WidgetContent(weather: List<LocationWeather>, updatedAt: Long, page: Int) {
+private fun WidgetContent() {
+    // Everything is read inside the composition so every recomposition sees the
+    // latest values (see the note on the state keys above).
+    val context = LocalContext.current
+    currentState(DATA_VERSION_KEY) // subscribe: the worker bumps this on new data
+    val refreshing = currentState(REFRESHING_KEY) ?: false
+    val weather = Store.getCachedWeather(context)
+    val updatedAt = Store.getLastUpdated(context)
+    // Clamp to the cached data so a stored page can never render blank rows.
+    val maxPage = ((weather.maxOfOrNull { it.hours.size } ?: 0) - 1).coerceAtLeast(0) / 6
+    val page = (currentState(FORECAST_PAGE_KEY) ?: 0).coerceIn(0, maxPage)
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
@@ -91,20 +113,28 @@ private fun WidgetContent(weather: List<LocationWeather>, updatedAt: Long, page:
                 modifier = GlanceModifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val updatedText = if (updatedAt > 0) {
-                    "Updated " + SimpleDateFormat("h:mm a", Locale.US).format(Date(updatedAt))
-                } else "Waiting for first update…"
+                val allFailed = weather.isNotEmpty() && weather.all { it.error != null }
+                val updatedText = when {
+                    refreshing -> "Updating…"
+                    updatedAt == 0L -> "Waiting for first update…"
+                    allFailed -> "Update failed"
+                    else -> "Updated " + SimpleDateFormat("h:mm a", Locale.US).format(Date(updatedAt))
+                }
                 Text(
                     updatedText,
-                    style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 10.sp)
+                    maxLines = 1,
+                    style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 10.sp),
+                    modifier = GlanceModifier.defaultWeight()
                 )
-                Spacer(GlanceModifier.defaultWeight())
+                // Generous padding on the clickable nodes: in Glance the padding is
+                // part of the tappable view, so these approach the 48dp guideline
+                // instead of the bare glyph's ~20dp.
                 if (weather.any { it.hours.size > 6 }) {
                     Text(
                         "‹",
-                        style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 14.sp),
+                        style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 16.sp),
                         modifier = GlanceModifier
-                            .padding(horizontal = 6.dp)
+                            .padding(horizontal = 9.dp, vertical = 6.dp)
                             .clickable(actionRunCallback<PageBackAction>())
                     )
                     Text(
@@ -113,17 +143,17 @@ private fun WidgetContent(weather: List<LocationWeather>, updatedAt: Long, page:
                     )
                     Text(
                         "›",
-                        style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 14.sp),
+                        style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 16.sp),
                         modifier = GlanceModifier
-                            .padding(horizontal = 6.dp)
+                            .padding(horizontal = 9.dp, vertical = 6.dp)
                             .clickable(actionRunCallback<PageForwardAction>())
                     )
                 }
                 Text(
                     "↻",
-                    style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 14.sp),
+                    style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 16.sp),
                     modifier = GlanceModifier
-                        .padding(horizontal = 6.dp)
+                        .padding(horizontal = 9.dp, vertical = 6.dp)
                         .clickable(actionRunCallback<RefreshAction>())
                 )
             }
@@ -227,20 +257,37 @@ private fun aqiColor(aqi: Int?): Color = when {
 
 class RefreshAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        updateAppWidgetState(context, glanceId) { prefs -> prefs[REFRESHING_KEY] = true }
+        WeatherWidget().update(context, glanceId) // instant "Updating…" feedback
         RefreshWorker.refreshNow(context)
     }
 }
 
+// Page state is per widget instance and pages wrap around the number of pages
+// the cached data can actually fill, so every tap visibly responds; updating
+// only the tapped instance keeps the repaint path minimal.
 class PageBackAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        Store.setForecastPage(context, Store.getForecastPage(context) - 1)
-        WeatherWidget().updateAll(context)
+        val pages = pageCount(context)
+        updateAppWidgetState(context, glanceId) { prefs ->
+            prefs[FORECAST_PAGE_KEY] = ((prefs[FORECAST_PAGE_KEY] ?: 0) - 1).mod(pages)
+        }
+        WeatherWidget().update(context, glanceId)
     }
 }
 
 class PageForwardAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        Store.setForecastPage(context, Store.getForecastPage(context) + 1)
-        WeatherWidget().updateAll(context)
+        val pages = pageCount(context)
+        updateAppWidgetState(context, glanceId) { prefs ->
+            prefs[FORECAST_PAGE_KEY] = ((prefs[FORECAST_PAGE_KEY] ?: 0) + 1).mod(pages)
+        }
+        WeatherWidget().update(context, glanceId)
     }
+}
+
+/** Number of six-hour pages the cached data can fill (at least 1). */
+private fun pageCount(context: Context): Int {
+    val maxHours = Store.getCachedWeather(context).maxOfOrNull { it.hours.size } ?: 0
+    return (maxHours - 1).coerceAtLeast(0) / 6 + 1
 }
