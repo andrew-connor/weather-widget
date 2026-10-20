@@ -137,23 +137,26 @@ object GaugeApi {
 }
 
 /**
- * AirNow current observations API. Returns the worst AQI across the reported
- * pollutants (that is how airnow.gov itself summarizes a location).
+ * AirNow current observations, via the "ziplatlong" service that replaced the
+ * latLong/current service retired on 2026-10-01 (same API key). Returns the
+ * worst AQI across the reported pollutants, which is how airnow.gov summarizes
+ * a location. The service searches a fixed ~50-mile radius.
  * https://docs.airnowapi.org/
  */
 object AirNowApi {
     fun fetch(apiKey: String, lat: Double, lon: Double): Pair<Int?, String?> {
-        val url = "https://www.airnowapi.org/aq/observation/latLong/current/" +
-            "?format=application/json&latitude=$lat&longitude=$lon&distance=50&API_KEY=$apiKey"
+        val url = "https://www.airnowapi.org/aq/observation/current/ziplatlong/" +
+            "?format=application/json&latitude=$lat&longitude=$lon&API_KEY=$apiKey"
         val arr = JSONArray(Net.getJson(url))
         var worstAqi: Int? = null
         var category: String? = null
         for (i in 0 until arr.length()) {
             val obs = arr.getJSONObject(i)
-            val aqi = obs.optInt("AQI", -1)
+            // nowcastAQI is null for a pollutant with no current reading.
+            val aqi = if (obs.isNull("nowcastAQI")) -1 else obs.optInt("nowcastAQI", -1)
             if (aqi >= 0 && aqi > (worstAqi ?: -1)) {
                 worstAqi = aqi
-                category = obs.optJSONObject("Category")?.optString("Name")
+                category = obs.optString("aqiCategoryName").ifEmpty { null }
             }
         }
         return worstAqi to category
