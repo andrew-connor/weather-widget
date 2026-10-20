@@ -105,6 +105,10 @@ fun AppScreen() {
     var results by remember { mutableStateOf<List<GeoResult>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
+    // Most recent per-location fetch error, so a failed widget refresh is diagnosable here.
+    val lastErrors = remember {
+        Store.getCachedWeather(context).mapNotNull { w -> w.error?.let { w.location.name to it } }.toMap()
+    }
 
     fun saveKeys() {
         Store.setPirateKey(context, pirateKey)
@@ -231,7 +235,16 @@ fun AppScreen() {
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(loc.name, modifier = Modifier.weight(1f))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(loc.name)
+                        lastErrors[loc.name]?.let { err ->
+                            Text(
+                                "Last update failed: $err",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
                     TextButton(onClick = { removeLocation(loc) }) { Text("Remove") }
                 }
             }
